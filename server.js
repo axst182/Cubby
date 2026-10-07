@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const DATA_FILE = path.join(process.env.DATA_DIR || '/data', 'items.json');
 const DEFAULTS = ['Underställ överdel', 'Underställ underdel', 'Strumpor', 'Underkläder', 'Tröja', 'Byxor', 'Mössa', 'Vantar', 'Regnbyxor'];
 
