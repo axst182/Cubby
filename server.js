@@ -9,28 +9,44 @@ const TZ = process.env.TZ || 'Europe/Stockholm';
 const NTFY_URL = process.env.NTFY_URL || '';
 const REMINDER_TIME = process.env.REMINDER_TIME || '19:00';
 
+const SEASONS = ['vinter', 'var-host', 'sommar'];
 const DEFAULTS = [
-  ['Underställ överdel', 1], ['Underställ underdel', 1], ['Strumpor', 2], ['Underkläder', 2],
-  ['Tröja', 1], ['Byxor', 1], ['Mössa', 1], ['Vantar', 1], ['Regnbyxor', 1],
+  ['Underställ överdel', 1, ['vinter']], ['Underställ underdel', 1, ['vinter']],
+  ['Strumpor', 2, []], ['Underkläder', 2, []], ['Tröja', 1, []], ['Byxor', 1, []],
+  ['Mössa', 1, ['vinter', 'var-host']], ['Vantar', 1, ['vinter']], ['Skaloverall', 1, ['vinter']],
+  ['Regnbyxor', 1, ['var-host']], ['Solhatt', 1, ['sommar']], ['Badkläder', 1, ['sommar']],
 ];
 const clamp = (v) => Math.max(1, Math.min(20, parseInt(v, 10) || 1));
-const newItem = (name, qty = 1) => ({ id: crypto.randomUUID(), name, qty: clamp(qty), bring: false, bringQty: clamp(qty) });
 const normalize = (i) => {
   i.qty = clamp(i.qty);
   i.bringQty = Math.min(clamp(i.bringQty ?? i.qty), i.qty);
   i.bring = !!i.bring;
+  i.seasons = SEASONS.filter((x) => (Array.isArray(i.seasons) ? i.seasons : []).includes(x));
+  i.note = String(i.note || '').slice(0, 100);
   return i;
+};
+const newItem = (name, qty = 1, seasons = [], note = '') =>
+  normalize({ id: crypto.randomUUID(), name, qty, bring: false, bringQty: qty, seasons, note });
+const defaultSeason = () => {
+  const m = new Date().getMonth(); // 0 = januari
+  return m >= 10 || m <= 2 ? 'vinter' : m >= 5 && m <= 7 ? 'sommar' : 'var-host';
 };
 
 function load() {
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')).map(normalize); }
-  catch { return DEFAULTS.map(([n, q]) => newItem(n, q)); }
+  try {
+    const raw = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const list = Array.isArray(raw) ? raw : raw.items; // äldre versioner sparade bara en lista
+    return { season: SEASONS.includes(raw.season) ? raw.season : defaultSeason(), items: list.map(normalize) };
+  } catch {
+    return { season: defaultSeason(), items: DEFAULTS.map(([n, q, s]) => newItem(n, q, s)) };
+  }
 }
 function save() {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2));
+  fs.writeFileSync(DATA_FILE, JSON.stringify({ season, items }, null, 2));
 }
-let items = load();
+let { season, items } = load();
+const state = () => ({ season, items });
 
 // ---- Kvällspåminnelse via ntfy (https://ntfy.sh) ----
 const label = (i) => (i.qty > 1 ? `${i.name} ×${i.bringQty}` : i.name);
@@ -80,25 +96,35 @@ const readBody = (req) => new Promise((resolve) => {
 http.createServer(async (req, res) => {
   const p = new URL(req.url, 'http://x').pathname;
 
-  if (p === '/api/items' && req.method === 'GET') return send(res, 200, items);
+  if (p === '/api/items' && req.method === 'GET') return send(res, 200, state());
 
   if (p === '/api/items' && req.method === 'POST') {
-    const { name, qty } = await readBody(req);
+    const { name, qty, seasons, note } = await readBody(req);
     if (!name || !name.trim()) return send(res, 400, { error: 'Namn saknas' });
-    items.push(newItem(name.trim().slice(0, 60), qty));
+    items.push(newItem(name.trim().slice(0, 60), clamp(qty), seasons, note));
     save();
-    return send(res, 201, items);
+    return send(res, 201, state());
   }
 
   if (p === '/api/reset' && req.method === 'POST') {
     items.forEach((i) => { i.bring = false; i.bringQty = i.qty; });
     save();
-    return send(res, 200, items);
+    return send(res, 200, state());
   }
 
   if (p === '/api/remind' && req.method === 'POST') {
     try { return send(res, 200, await remind()); }
     catch (e) { return send(res, 502, { ok: false, reason: e.message }); }
+  }
+
+  if (p === '/healthz') { res.writeHead(200); return res.end('ok'); }
+
+  if (p === '/api/season' && req.method === 'PUT') {
+    const b = await readBody(req);
+    if (!SEASONS.includes(b.season)) return send(res, 400, { error: 'Okänd säsong' });
+    season = b.season;
+    save();
+    return send(res, 200, state());
   }
 
   const m = p.match(/^\/api\/items\/([\w-]+)$/);
@@ -107,18 +133,20 @@ http.createServer(async (req, res) => {
     if (!item) return send(res, 404, { error: 'Hittades inte' });
     if (req.method === 'PATCH') {
       const b = await readBody(req);
+      if ('note' in b) item.note = String(b.note).slice(0, 100);
+      if ('seasons' in b) item.seasons = SEASONS.filter((x) => (b.seasons || []).includes(x));
       if ('qty' in b) item.qty = clamp(b.qty);
       if ('bring' in b) item.bring = !!b.bring;
       if ('bringQty' in b) item.bringQty = clamp(b.bringQty);
       else if (b.bring === true) item.bringQty = item.qty;
       item.bringQty = Math.min(item.bringQty, item.qty);
       save();
-      return send(res, 200, items);
+      return send(res, 200, state());
     }
     if (req.method === 'DELETE') {
       items = items.filter((i) => i.id !== item.id);
       save();
-      return send(res, 200, items);
+      return send(res, 200, state());
     }
   }
 

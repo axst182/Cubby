@@ -54,6 +54,17 @@
   .step span{min-width:22px;text-align:center;font-weight:700}
   .count{color:var(--muted);font-weight:600;margin-left:4px}
   #qty{flex:none;width:72px}
+  .seasons{display:flex;gap:6px;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:4px;margin-bottom:12px}
+  .seg{flex:1;font:inherit;font-weight:600;border:0;border-radius:12px;padding:10px 6px;background:none;color:var(--muted);cursor:pointer}
+  .seg[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+  .note{display:block;font-size:.85rem;font-weight:400;color:var(--muted)}
+  .row.editing{flex-wrap:wrap}
+  .row.editing .item{width:auto;flex:1 1 180px}
+  .extra{flex-basis:100%;display:grid;gap:8px;padding:0 4px 10px}
+  .noteinput{padding:10px 12px;border-radius:12px;font-size:.95rem}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font:inherit;font-size:.85rem;font-weight:600;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:6px 12px;cursor:pointer}
+  .chip[aria-pressed=true]{border-color:var(--ok);background:var(--ok-bg);color:var(--ok)}
   button:focus-visible,input:focus-visible{outline:3px solid var(--ok);outline-offset:2px}
   .hint{color:var(--muted);font-size:.9rem;margin:0 0 10px}
 </style>
@@ -65,7 +76,8 @@
     <button class="link" id="edit">Redigera</button>
   </header>
   <section class="summary" id="summary" aria-live="polite"></section>
-  <p class="hint">Bocka i det du tog hem och behöver ta med nästa dag. Ändra antal under Redigera.</p>
+  <div class="seasons" id="seasons" role="group" aria-label="Säsong"></div>
+  <p class="hint">Bocka i det du tog hem och behöver ta med nästa dag. Ändra antal, anteckning och säsong under Redigera.</p>
   <ul class="list" id="list"></ul>
   <form id="add" hidden>
     <input id="qty" type="number" min="1" max="20" value="1" inputmode="numeric" aria-label="Antal">
@@ -74,7 +86,8 @@
   </form>
 </main>
 <script>
-let items = [], editing = false;
+let items = [], season = 'vinter', editing = false;
+const SEASONS = [['vinter', 'Vinter'], ['var-host', 'Vår/höst'], ['sommar', 'Sommar']];
 const $ = (id) => document.getElementById(id);
 const esc = (t) => t.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const label = (i) => esc(i.name) + (i.qty > 1 ? ' ×' + i.bringQty : '');
@@ -82,7 +95,7 @@ const label = (i) => esc(i.name) + (i.qty > 1 ? ' ×' + i.bringQty : '');
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
   if (!r.ok) throw new Error('Något gick fel');
-  items = await r.json();
+  ({ season, items } = await r.json());
   render();
 }
 
@@ -98,6 +111,21 @@ function stepper(val, min, max, name, onChange) {
   return d;
 }
 
+function extras(i) {
+  const d = document.createElement('div');
+  d.className = 'extra';
+  d.innerHTML = '<input class="noteinput" maxlength="100" placeholder="Anteckning, t.ex. stl 98 eller märkt med namn" aria-label="Anteckning för ' + esc(i.name) + '" value="' + esc(i.note) + '">' +
+    '<span class="chips"><button type="button" class="chip" data-k="" aria-pressed="' + !i.seasons.length + '">Året runt</button>' +
+    SEASONS.map(([k, n]) => '<button type="button" class="chip" data-k="' + k + '" aria-pressed="' + i.seasons.includes(k) + '">' + n + '</button>').join('') + '</span>';
+  d.querySelector('input').onchange = (e) => api('PATCH', '/api/items/' + i.id, { note: e.target.value });
+  d.querySelectorAll('.chip').forEach((b) => b.onclick = () => {
+    const k = b.dataset.k;
+    const next = !k ? [] : i.seasons.includes(k) ? i.seasons.filter((x) => x !== k) : [...i.seasons, k];
+    api('PATCH', '/api/items/' + i.id, { seasons: next });
+  });
+  return d;
+}
+
 function render() {
   const bring = items.filter((i) => i.bring);
   const s = $('summary');
@@ -110,12 +138,16 @@ function render() {
   } else {
     s.innerHTML = '<strong>Allt finns på förskolan</strong>Inget behöver tas med.';
   }
+  $('seasons').innerHTML = SEASONS.map(([k, n]) => '<button type="button" class="seg" data-k="' + k + '" aria-pressed="' + (k === season) + '">' + n + '</button>').join('');
+  $('seasons').querySelectorAll('.seg').forEach((b) => b.onclick = () => api('PUT', '/api/season', { season: b.dataset.k }));
   $('list').innerHTML = '';
-  items.forEach((i) => {
+  const visible = editing ? items : items.filter((i) => !i.seasons.length || i.seasons.includes(season));
+  visible.forEach((i) => {
     const li = document.createElement('li');
-    li.className = 'row';
+    li.className = 'row' + (editing ? ' editing' : '');
     li.innerHTML = '<button class="item" aria-pressed="' + i.bring + '"><span class="box"></span>' +
-      '<span class="name">' + esc(i.name) + (i.qty > 1 ? '<span class="count">×' + i.qty + '</span>' : '') + '</span>' +
+      '<span class="name">' + esc(i.name) + (i.qty > 1 ? '<span class="count">×' + i.qty + '</span>' : '') +
+      (i.note ? '<small class="note">' + esc(i.note) + '</small>' : '') + '</span>' +
       '<span class="state">' + (i.bring ? 'Ta med' : 'På förskolan') + '</span></button>';
     li.querySelector('.item').onclick = () => api('PATCH', '/api/items/' + i.id, { bring: !i.bring });
     if (!editing && i.bring && i.qty > 1) {
@@ -127,6 +159,7 @@ function render() {
       d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', 'Ta bort ' + i.name);
       d.onclick = () => confirm('Ta bort "' + i.name + '" från listan?') && api('DELETE', '/api/items/' + i.id);
       li.appendChild(d);
+      li.appendChild(extras(i));
     }
     $('list').appendChild(li);
   });
@@ -141,7 +174,7 @@ $('add').onsubmit = (e) => {
   if (v) { const q = $('qty').value; $('name').value = ''; $('qty').value = 1; api('POST', '/api/items', { name: v, qty: q }); }
 };
 
-const refresh = () => fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); });
+const refresh = () => fetch('/api/items').then((r) => r.json()).then((d) => { ({ season, items } = d); render(); });
 refresh();
 // Håll flera föräldrars vyer synkade
 setInterval(() => { if (!editing) refresh(); }, 15000);

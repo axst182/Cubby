@@ -16,6 +16,9 @@ The list is stored on the server, so everyone who picks up and drops off sees th
 - Add and remove items, and set how many of each, with the **Edit** button (e.g. Socks ×2)
 - When you take something home you can choose how many to bring back
 - Optional evening reminder to your phone via [ntfy](https://ntfy.sh)
+- **Seasons.** Switch between Winter, Spring/autumn and Summer with one tap. Tag each item with the seasons it belongs to (no tag = all year) under **Edit**. Items marked "Bring tomorrow" always show in the summary, whatever the season
+- **Notes per item**, e.g. size or "name label sewn in"
+- Docker `HEALTHCHECK`, so Portainer shows whether the app is healthy
 - Mobile-friendly, with light and dark mode
 - No external dependencies, just Node.js
 - Data persists in a Docker volume
@@ -25,7 +28,7 @@ The list is stored on the server, so everyone who picks up and drops off sees th
 ```yaml
 services:
   cubby:
-    image: ghcr.io/axst182/cubby:latest
+    build: .
     container_name: cubby
     ports:
       - "3001:3001"
@@ -97,9 +100,11 @@ index.html     # the whole front end
 
 | Method   | Path              | Description                          |
 |----------|-------------------|--------------------------------------|
-| `GET`    | `/api/items`      | List all items                       |
+| `GET`    | `/api/items`      | Get `{ season, items }`              |
+| `PUT`    | `/api/season`     | Set `{ "season": "vinter" \| "var-host" \| "sommar" }` |
+| `GET`    | `/healthz`        | Health check (returns `ok`)          |
 | `POST`   | `/api/items`      | Add an item (`{ "name": "Socks", "qty": 2 }`)  |
-| `PATCH`  | `/api/items/:id`  | Update `bring`, `bringQty` or `qty`  |
+| `PATCH`  | `/api/items/:id`  | Update `bring`, `bringQty`, `qty`, `note` or `seasons` |
 | `DELETE` | `/api/items/:id`  | Remove an item                       |
 | `POST`   | `/api/reset`      | Clear all "bring tomorrow" flags     |
 | `POST`   | `/api/remind`     | Send the reminder now                |
