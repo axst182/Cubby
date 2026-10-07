@@ -56,7 +56,7 @@ To update, change the reference to the new tag (or just pull the latest `main`) 
 
 | Variable   | Default | Description                      |
 |------------|---------|----------------------------------|
-| `PORT`     | `3000`  | Port the server listens on       |
+| `PORT`     | `3001`  | Port the server listens on       |
 | `DATA_DIR` | `/data` | Where `items.json` is stored     |
 
 To change the default starting list, edit `DEFAULTS` in `server.js` before the first start. After that, use **Edit** in the app.
