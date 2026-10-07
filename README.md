@@ -13,7 +13,9 @@ The list is stored on the server, so everyone who picks up and drops off sees th
 ## Features
 
 - Shared checklist, no accounts needed
-- Add and remove items with the **Edit** button
+- Add and remove items, and set how many of each, with the **Edit** button (e.g. Socks ×2)
+- When you take something home you can choose how many to bring back
+- Optional evening reminder to your phone via [ntfy](https://ntfy.sh)
 - Mobile-friendly, with light and dark mode
 - No external dependencies, just Node.js
 - Data persists in a Docker volume
@@ -27,6 +29,10 @@ services:
     container_name: cubby
     ports:
       - "3001:3001"
+    environment:
+      TZ: Europe/Stockholm
+      NTFY_URL: ${NTFY_URL:-}
+      REMINDER_TIME: ${REMINDER_TIME:-19:00}
     volumes:
       - cubby-data:/data
     restart: unless-stopped
@@ -58,8 +64,21 @@ To update, change the reference to the new tag (or just pull the latest `main`) 
 |------------|---------|----------------------------------|
 | `PORT`     | `3001`  | Port the server listens on       |
 | `DATA_DIR` | `/data` | Where `items.json` is stored     |
+| `TZ`       | `Europe/Stockholm` | Time zone for the reminder |
+| `NTFY_URL` | _(empty)_ | ntfy topic URL. Reminders are off if empty |
+| `REMINDER_TIME` | `19:00` | Time of the evening reminder (HH:MM) |
 
 To change the default starting list, edit `DEFAULTS` in `server.js` before the first start. After that, use **Edit** in the app.
+
+## Evening reminder
+
+Cubby can send a push notification to your phone when something is marked **Bring tomorrow**.
+
+1. Install the ntfy app and subscribe to a topic with a hard-to-guess name, e.g. `cubby-x7k2p9`.
+2. Set `NTFY_URL=https://ntfy.sh/cubby-x7k2p9` (in Portainer: stack **Environment variables**).
+3. Redeploy. Every evening at `REMINDER_TIME` you get a message like *"Bring tomorrow: Socks ×2, Mittens"*.
+
+No reminder is sent if nothing is marked, or on Friday and Saturday evenings. To test it, run `curl -X POST http://localhost:3001/api/remind`. You can also self-host ntfy and point `NTFY_URL` at your own server.
 
 ## Security
 
@@ -79,7 +98,8 @@ index.html     # the whole front end
 | Method   | Path              | Description                          |
 |----------|-------------------|--------------------------------------|
 | `GET`    | `/api/items`      | List all items                       |
-| `POST`   | `/api/items`      | Add an item (`{ "name": "Socks" }`)  |
-| `PATCH`  | `/api/items/:id`  | Set `{ "bring": true/false }`        |
+| `POST`   | `/api/items`      | Add an item (`{ "name": "Socks", "qty": 2 }`)  |
+| `PATCH`  | `/api/items/:id`  | Update `bring`, `bringQty` or `qty`  |
 | `DELETE` | `/api/items/:id`  | Remove an item                       |
 | `POST`   | `/api/reset`      | Clear all "bring tomorrow" flags     |
+| `POST`   | `/api/remind`     | Send the reminder now                |

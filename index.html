@@ -48,6 +48,12 @@
     background:var(--card);color:var(--ink);min-width:0}
   form button{font:inherit;font-weight:600;border:0;border-radius:14px;padding:0 18px;
     background:var(--ink);color:var(--bg);cursor:pointer}
+  .step{flex:none;display:flex;align-items:center;gap:2px;background:var(--card);border:2px solid var(--line);border-radius:14px;padding:2px}
+  .step button{width:36px;height:44px;border:0;background:none;color:var(--ink);font-size:1.3rem;cursor:pointer;border-radius:10px}
+  .step button:disabled{opacity:.3;cursor:default}
+  .step span{min-width:22px;text-align:center;font-weight:700}
+  .count{color:var(--muted);font-weight:600;margin-left:4px}
+  #qty{flex:none;width:72px}
   button:focus-visible,input:focus-visible{outline:3px solid var(--ok);outline-offset:2px}
   .hint{color:var(--muted);font-size:.9rem;margin:0 0 10px}
 </style>
@@ -59,9 +65,10 @@
     <button class="link" id="edit">Redigera</button>
   </header>
   <section class="summary" id="summary" aria-live="polite"></section>
-  <p class="hint">Bocka i det du tog hem och behöver ta med nästa dag.</p>
+  <p class="hint">Bocka i det du tog hem och behöver ta med nästa dag. Ändra antal under Redigera.</p>
   <ul class="list" id="list"></ul>
   <form id="add" hidden>
+    <input id="qty" type="number" min="1" max="20" value="1" inputmode="numeric" aria-label="Antal">
     <input id="name" placeholder="Nytt plagg, t.ex. Fleecetröja" maxlength="60" aria-label="Nytt plagg">
     <button>Lägg till</button>
   </form>
@@ -69,6 +76,8 @@
 <script>
 let items = [], editing = false;
 const $ = (id) => document.getElementById(id);
+const esc = (t) => t.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const label = (i) => esc(i.name) + (i.qty > 1 ? ' ×' + i.bringQty : '');
 
 async function api(method, url, body) {
   const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
@@ -77,13 +86,25 @@ async function api(method, url, body) {
   render();
 }
 
+function stepper(val, min, max, name, onChange) {
+  const d = document.createElement('div');
+  d.className = 'step';
+  d.innerHTML = '<button type="button" aria-label="Minska antal ' + esc(name) + '">−</button><span>' + val +
+    '</span><button type="button" aria-label="Öka antal ' + esc(name) + '">+</button>';
+  const [minus, plus] = d.querySelectorAll('button');
+  minus.disabled = val <= min; plus.disabled = val >= max;
+  minus.onclick = () => onChange(val - 1);
+  plus.onclick = () => onChange(val + 1);
+  return d;
+}
+
 function render() {
   const bring = items.filter((i) => i.bring);
   const s = $('summary');
   s.className = 'summary' + (bring.length ? ' has' : '');
   if (bring.length) {
     s.innerHTML = '<strong>Ta med nästa dag</strong><ul>' +
-      bring.map((i) => '<li>' + esc(i.name) + '</li>').join('') +
+      bring.map((i) => '<li>' + label(i) + '</li>').join('') +
       '</ul><button id="done">Jag har lämnat allt</button>';
     $('done').onclick = () => api('POST', '/api/reset');
   } else {
@@ -94,10 +115,14 @@ function render() {
     const li = document.createElement('li');
     li.className = 'row';
     li.innerHTML = '<button class="item" aria-pressed="' + i.bring + '"><span class="box"></span>' +
-      '<span class="name">' + esc(i.name) + '</span>' +
+      '<span class="name">' + esc(i.name) + (i.qty > 1 ? '<span class="count">×' + i.qty + '</span>' : '') + '</span>' +
       '<span class="state">' + (i.bring ? 'Ta med' : 'På förskolan') + '</span></button>';
     li.querySelector('.item').onclick = () => api('PATCH', '/api/items/' + i.id, { bring: !i.bring });
+    if (!editing && i.bring && i.qty > 1) {
+      li.appendChild(stepper(i.bringQty, 1, i.qty, i.name, (v) => api('PATCH', '/api/items/' + i.id, { bringQty: v })));
+    }
     if (editing) {
+      li.appendChild(stepper(i.qty, 1, 20, i.name, (v) => api('PATCH', '/api/items/' + i.id, { qty: v })));
       const d = document.createElement('button');
       d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', 'Ta bort ' + i.name);
       d.onclick = () => confirm('Ta bort "' + i.name + '" från listan?') && api('DELETE', '/api/items/' + i.id);
@@ -108,18 +133,18 @@ function render() {
   $('add').hidden = !editing;
   $('edit').textContent = editing ? 'Klar' : 'Redigera';
 }
-const esc = (t) => t.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 $('edit').onclick = () => { editing = !editing; render(); };
 $('add').onsubmit = (e) => {
   e.preventDefault();
   const v = $('name').value.trim();
-  if (v) { $('name').value = ''; api('POST', '/api/items', { name: v }); }
+  if (v) { const q = $('qty').value; $('name').value = ''; $('qty').value = 1; api('POST', '/api/items', { name: v, qty: q }); }
 };
 
-fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); });
+const refresh = () => fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); });
+refresh();
 // Håll flera föräldrars vyer synkade
-setInterval(() => { if (!editing) fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); }); }, 15000);
+setInterval(() => { if (!editing) refresh(); }, 15000);
 </script>
 </body>
 </html>
