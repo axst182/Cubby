@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reservkläder</title>
+<style>
+  :root{
+    --bg:#eef3f6; --card:#ffffff; --ink:#1d2a35; --muted:#5d6d79;
+    --ok:#2f8a68; --ok-bg:#e3f2ec; --bring:#d23f3f; --bring-bg:#fdeaea; --line:#d5dfe5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#141c22; --card:#1e2931; --ink:#eaf0f4; --muted:#9aabb7;
+      --ok:#5fc79e; --ok-bg:#1f3a30; --bring:#ff7b7b; --bring-bg:#43252a; --line:#2f3d47; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.4;
+    padding:max(16px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+  main{max-width:520px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+  h1{font-size:1.6rem;margin:0}
+  .link{background:none;border:0;color:var(--muted);font:inherit;padding:8px 0;cursor:pointer}
+  .summary{border-radius:18px;padding:16px 18px;margin-bottom:16px;background:var(--ok-bg);color:var(--ok);font-weight:600}
+  .summary.has{background:var(--bring-bg);color:var(--bring)}
+  .summary strong{display:block;font-size:1.15rem;margin-bottom:4px}
+  .summary ul{margin:6px 0 12px;padding-left:20px;color:var(--ink);font-weight:500}
+  .summary button{font:inherit;font-weight:600;border:2px solid var(--bring);color:var(--bring);
+    background:transparent;border-radius:12px;padding:10px 14px;cursor:pointer;width:100%}
+  ul.list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .row{display:flex;align-items:center;gap:8px}
+  .item{flex:1;display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+    background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px 16px;
+    font:inherit;color:inherit;cursor:pointer;min-height:60px}
+  .box{flex:none;width:28px;height:28px;border-radius:9px;border:2.5px solid var(--ok);
+    display:grid;place-items:center;color:#fff;font-weight:700}
+  .item[aria-pressed=true]{border-color:var(--bring);background:var(--bring-bg)}
+  .item[aria-pressed=true] .box{background:var(--bring);border-color:var(--bring)}
+  .item[aria-pressed=true] .box::after{content:"✓"}
+  .name{flex:1;font-size:1.05rem;font-weight:600}
+  .state{font-size:.85rem;color:var(--muted)}
+  .item[aria-pressed=true] .state{color:var(--bring);font-weight:600}
+  .del{flex:none;width:48px;height:48px;border-radius:14px;border:2px solid var(--line);
+    background:var(--card);color:var(--bring);font-size:1.2rem;cursor:pointer}
+  form{display:flex;gap:8px;margin-top:16px}
+  input{flex:1;font:inherit;padding:14px 16px;border-radius:14px;border:2px solid var(--line);
+    background:var(--card);color:var(--ink);min-width:0}
+  form button{font:inherit;font-weight:600;border:0;border-radius:14px;padding:0 18px;
+    background:var(--ink);color:var(--bg);cursor:pointer}
+  button:focus-visible,input:focus-visible{outline:3px solid var(--ok);outline-offset:2px}
+  .hint{color:var(--muted);font-size:.9rem;margin:0 0 10px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Reservkläder</h1>
+    <button class="link" id="edit">Redigera</button>
+  </header>
+  <section class="summary" id="summary" aria-live="polite"></section>
+  <p class="hint">Bocka i det du tog hem och behöver ta med nästa dag.</p>
+  <ul class="list" id="list"></ul>
+  <form id="add" hidden>
+    <input id="name" placeholder="Nytt plagg, t.ex. Fleecetröja" maxlength="60" aria-label="Nytt plagg">
+    <button>Lägg till</button>
+  </form>
+</main>
+<script>
+let items = [], editing = false;
+const $ = (id) => document.getElementById(id);
+
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error('Något gick fel');
+  items = await r.json();
+  render();
+}
+
+function render() {
+  const bring = items.filter((i) => i.bring);
+  const s = $('summary');
+  s.className = 'summary' + (bring.length ? ' has' : '');
+  if (bring.length) {
+    s.innerHTML = '<strong>Ta med nästa dag</strong><ul>' +
+      bring.map((i) => '<li>' + esc(i.name) + '</li>').join('') +
+      '</ul><button id="done">Jag har lämnat allt</button>';
+    $('done').onclick = () => api('POST', '/api/reset');
+  } else {
+    s.innerHTML = '<strong>Allt finns på förskolan</strong>Inget behöver tas med.';
+  }
+  $('list').innerHTML = '';
+  items.forEach((i) => {
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.innerHTML = '<button class="item" aria-pressed="' + i.bring + '"><span class="box"></span>' +
+      '<span class="name">' + esc(i.name) + '</span>' +
+      '<span class="state">' + (i.bring ? 'Ta med' : 'På förskolan') + '</span></button>';
+    li.querySelector('.item').onclick = () => api('PATCH', '/api/items/' + i.id, { bring: !i.bring });
+    if (editing) {
+      const d = document.createElement('button');
+      d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', 'Ta bort ' + i.name);
+      d.onclick = () => confirm('Ta bort "' + i.name + '" från listan?') && api('DELETE', '/api/items/' + i.id);
+      li.appendChild(d);
+    }
+    $('list').appendChild(li);
+  });
+  $('add').hidden = !editing;
+  $('edit').textContent = editing ? 'Klar' : 'Redigera';
+}
+const esc = (t) => t.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+$('edit').onclick = () => { editing = !editing; render(); };
+$('add').onsubmit = (e) => {
+  e.preventDefault();
+  const v = $('name').value.trim();
+  if (v) { $('name').value = ''; api('POST', '/api/items', { name: v }); }
+};
+
+fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); });
+// Håll flera föräldrars vyer synkade
+setInterval(() => { if (!editing) fetch('/api/items').then((r) => r.json()).then((d) => { items = d; render(); }); }, 15000);
+</script>
+</body>
+</html>

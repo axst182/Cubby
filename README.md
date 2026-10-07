@@ -1,2 +1,6 @@
-# Cubby
-Cubby is a simple, self-hosted app that keeps track of your child's spare clothes at daycare or preschool. Check off what you took home to wash, and see at a glance what to pack for tomorrow.
+# Reservkläder
+
+Starta:  `docker compose up -d --build`  →  http://localhost:3000
+
+Data sparas i volymen `klader-data` (/data/items.json), så listan finns kvar vid omstart.
+Ändra standardlistan i `server.js` (DEFAULTS) innan första start, eller använd Redigera i appen.
