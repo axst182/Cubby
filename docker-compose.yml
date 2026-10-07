@@ -1,10 +1,12 @@
 services:
-  reservklader:
+  cubby:
     build: .
+    container_name: cubby
     ports:
       - "3000:3000"
     volumes:
-      - klader-data:/data
+      - cubby-data:/data
     restart: unless-stopped
+
 volumes:
-  klader-data:
+  cubby-data:
