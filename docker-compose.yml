@@ -1,12 +1,11 @@
 services:
   cubby:
-    build: .
+    image: ghcr.io/axst182/cubby:latest
     container_name: cubby
     ports:
       - "3001:3001"
     environment:
       TZ: Europe/Stockholm
-      # Valfritt: kvällspåminnelse via ntfy, t.ex. https://ntfy.sh/ditt-hemliga-namn
       NTFY_URL: ${NTFY_URL:-}
       REMINDER_TIME: ${REMINDER_TIME:-19:00}
     volumes:
