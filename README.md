@@ -26,7 +26,7 @@ services:
     build: .
     container_name: cubby
     ports:
-      - "3000:3000"
+      - "3001:3001"
     volumes:
       - cubby-data:/data
     restart: unless-stopped
@@ -39,7 +39,7 @@ volumes:
 docker compose up -d --build
 ```
 
-Then open http://localhost:3000.
+Then open http://localhost:3001.
 
 ## Install in Portainer
 
@@ -48,7 +48,7 @@ Then open http://localhost:3000.
 3. Repository URL: `https://github.com/axst182/Cubby`
 4. Repository reference: `refs/heads/main`, or a release tag such as `refs/tags/v0.1.1`
 5. Compose path: `docker-compose.yml`
-6. Click **Deploy the stack**, then open `http://<your-server>:3000`.
+6. Click **Deploy the stack**, then open `http://<your-server>:3001`.
 
 To update, change the reference to the new tag (or just pull the latest `main`) and click **Update the stack**. Your data is kept in the `cubby-data` volume.
 
