@@ -150,6 +150,30 @@ http.createServer(async (req, res) => {
     }
   }
 
+  if (p === '/manifest.webmanifest') {
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json' });
+    return res.end(JSON.stringify({
+      name: 'Cubby', short_name: 'Cubby', start_url: '/', display: 'standalone',
+      background_color: '#eef3f6', theme_color: '#2f8a68',
+      icons: [
+        { src: '/assets/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: '/assets/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+      ],
+    }));
+  }
+
+  const asset = p.match(/^\/assets\/([\w-]+\.(svg|png))$/);
+  if (asset && req.method === 'GET') {
+    return fs.readFile(path.join(__dirname, 'public', 'assets', asset[1]), (err, buf) => {
+      if (err) return send(res, 404, { error: 'Hittades inte' });
+      res.writeHead(200, {
+        'Content-Type': asset[2] === 'svg' ? 'image/svg+xml' : 'image/png',
+        'Cache-Control': 'public, max-age=86400',
+      });
+      res.end(buf);
+    });
+  }
+
   if (req.method === 'GET') {
     return fs.readFile(path.join(__dirname, 'public', 'index.html'), (err, buf) => {
       if (err) return send(res, 500, { error: 'index.html saknas' });

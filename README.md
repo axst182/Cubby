@@ -1,4 +1,4 @@
-# Cubby
+<h1 align="center"><img src="assets/cubby-logo.svg" width="320" alt="Cubby"></h1>
 
 Cubby is a simple, self-hosted app that keeps track of your child's spare clothes at daycare or preschool. Check off what you took home to wash, and see at a glance what to pack for tomorrow.
 
@@ -18,6 +18,7 @@ The list is stored on the server, so everyone who picks up and drops off sees th
 - Optional evening reminder to your phone via [ntfy](https://ntfy.sh)
 - **Seasons.** Switch between Winter, Spring/autumn and Summer with one tap. Tag each item with the seasons it belongs to (no tag = all year) under **Edit**. Items marked "Bring tomorrow" always show in the summary, whatever the season
 - **Notes per item**, e.g. size or "name label sewn in"
+- Can be added to your phone's home screen, with its own icon
 - Docker `HEALTHCHECK`, so Portainer shows whether the app is healthy
 - Mobile-friendly, with light and dark mode
 - No external dependencies, just Node.js
@@ -83,6 +84,13 @@ Cubby can send a push notification to your phone when something is marked **Brin
 
 No reminder is sent if nothing is marked, or on Friday and Saturday evenings. To test it, run `curl -X POST http://localhost:3001/api/remind`. You can also self-host ntfy and point `NTFY_URL` at your own server.
 
+## Add to home screen
+
+- **iPhone (Safari):** tap the Share button, then **Add to Home Screen**.
+- **Android (Chrome):** open the menu, then **Add to home screen** or **Install app**.
+
+Cubby then opens in its own window with the Cubby icon, without the browser's address bar.
+
 ## Security
 
 Cubby has no login. Run it on your home network, or put a reverse proxy with authentication in front of it if you expose it to the internet.
@@ -94,6 +102,7 @@ Dockerfile
 docker-compose.yml
 server.js      # tiny HTTP server and JSON API
 index.html     # the whole front end
+assets/        # logo and app icons
 ```
 
 ## API
