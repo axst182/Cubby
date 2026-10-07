@@ -25,7 +25,7 @@ The list is stored on the server, so everyone who picks up and drops off sees th
 ```yaml
 services:
   cubby:
-    build: .
+    image: ghcr.io/axst182/cubby:latest
     container_name: cubby
     ports:
       - "3001:3001"
