@@ -92,11 +92,21 @@ const $ = (id) => document.getElementById(id);
 const esc = (t) => t.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const label = (i) => esc(i.name) + (i.qty > 1 ? ' ×' + i.bringQty : '');
 
-async function api(method, url, body) {
-  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
-  if (!r.ok) throw new Error('Något gick fel');
-  ({ season, items } = await r.json());
-  render();
+let pending = 0;
+// Visar ändringen direkt (apply) och skickar den till servern i bakgrunden.
+// Misslyckas anropet hämtas serverns version igen, så vyn aldrig visar fel status.
+async function api(method, url, body, apply) {
+  if (apply) { apply(); render(); }
+  pending++;
+  let ok = true;
+  try {
+    const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) throw new Error('Något gick fel');
+    const d = await r.json();
+    if (pending === 1) ({ season, items } = d); // ta emot serverns version först när inget annat väntar
+  } catch { ok = false; }
+  pending--;
+  if (ok) render(); else await refresh();
 }
 
 function stepper(val, min, max, name, onChange) {
@@ -117,11 +127,11 @@ function extras(i) {
   d.innerHTML = '<input class="noteinput" maxlength="100" placeholder="Anteckning, t.ex. stl 98 eller märkt med namn" aria-label="Anteckning för ' + esc(i.name) + '" value="' + esc(i.note) + '">' +
     '<span class="chips"><button type="button" class="chip" data-k="" aria-pressed="' + !i.seasons.length + '">Året runt</button>' +
     SEASONS.map(([k, n]) => '<button type="button" class="chip" data-k="' + k + '" aria-pressed="' + i.seasons.includes(k) + '">' + n + '</button>').join('') + '</span>';
-  d.querySelector('input').onchange = (e) => api('PATCH', '/api/items/' + i.id, { note: e.target.value });
+  d.querySelector('input').onchange = (e) => api('PATCH', '/api/items/' + i.id, { note: e.target.value }, () => { i.note = e.target.value; });
   d.querySelectorAll('.chip').forEach((b) => b.onclick = () => {
     const k = b.dataset.k;
     const next = !k ? [] : i.seasons.includes(k) ? i.seasons.filter((x) => x !== k) : [...i.seasons, k];
-    api('PATCH', '/api/items/' + i.id, { seasons: next });
+    api('PATCH', '/api/items/' + i.id, { seasons: next }, () => { i.seasons = next; });
   });
   return d;
 }
@@ -134,12 +144,12 @@ function render() {
     s.innerHTML = '<strong>Ta med nästa dag</strong><ul>' +
       bring.map((i) => '<li>' + label(i) + '</li>').join('') +
       '</ul><button id="done">Jag har lämnat allt</button>';
-    $('done').onclick = () => api('POST', '/api/reset');
+    $('done').onclick = () => api('POST', '/api/reset', null, () => items.forEach((x) => { x.bring = false; x.bringQty = x.qty; }));
   } else {
     s.innerHTML = '<strong>Allt finns på förskolan</strong>Inget behöver tas med.';
   }
   $('seasons').innerHTML = SEASONS.map(([k, n]) => '<button type="button" class="seg" data-k="' + k + '" aria-pressed="' + (k === season) + '">' + n + '</button>').join('');
-  $('seasons').querySelectorAll('.seg').forEach((b) => b.onclick = () => api('PUT', '/api/season', { season: b.dataset.k }));
+  $('seasons').querySelectorAll('.seg').forEach((b) => b.onclick = () => api('PUT', '/api/season', { season: b.dataset.k }, () => { season = b.dataset.k; }));
   $('list').innerHTML = '';
   const visible = editing ? items : items.filter((i) => !i.seasons.length || i.seasons.includes(season));
   visible.forEach((i) => {
@@ -149,15 +159,15 @@ function render() {
       '<span class="name">' + esc(i.name) + (i.qty > 1 ? '<span class="count">×' + i.qty + '</span>' : '') +
       (i.note ? '<small class="note">' + esc(i.note) + '</small>' : '') + '</span>' +
       '<span class="state">' + (i.bring ? 'Ta med' : 'På förskolan') + '</span></button>';
-    li.querySelector('.item').onclick = () => api('PATCH', '/api/items/' + i.id, { bring: !i.bring });
+    li.querySelector('.item').onclick = () => api('PATCH', '/api/items/' + i.id, { bring: !i.bring }, () => { i.bring = !i.bring; if (i.bring) i.bringQty = i.qty; });
     if (!editing && i.bring && i.qty > 1) {
-      li.appendChild(stepper(i.bringQty, 1, i.qty, i.name, (v) => api('PATCH', '/api/items/' + i.id, { bringQty: v })));
+      li.appendChild(stepper(i.bringQty, 1, i.qty, i.name, (v) => api('PATCH', '/api/items/' + i.id, { bringQty: v }, () => { i.bringQty = v; })));
     }
     if (editing) {
-      li.appendChild(stepper(i.qty, 1, 20, i.name, (v) => api('PATCH', '/api/items/' + i.id, { qty: v })));
+      li.appendChild(stepper(i.qty, 1, 20, i.name, (v) => api('PATCH', '/api/items/' + i.id, { qty: v }, () => { i.qty = v; i.bringQty = Math.min(i.bringQty, v); })));
       const d = document.createElement('button');
       d.className = 'del'; d.textContent = '✕'; d.setAttribute('aria-label', 'Ta bort ' + i.name);
-      d.onclick = () => confirm('Ta bort "' + i.name + '" från listan?') && api('DELETE', '/api/items/' + i.id);
+      d.onclick = () => confirm('Ta bort "' + i.name + '" från listan?') && api('DELETE', '/api/items/' + i.id, null, () => { items = items.filter((x) => x.id !== i.id); });
       li.appendChild(d);
       li.appendChild(extras(i));
     }
@@ -174,10 +184,10 @@ $('add').onsubmit = (e) => {
   if (v) { const q = $('qty').value; $('name').value = ''; $('qty').value = 1; api('POST', '/api/items', { name: v, qty: q }); }
 };
 
-const refresh = () => fetch('/api/items').then((r) => r.json()).then((d) => { ({ season, items } = d); render(); });
+const refresh = () => fetch('/api/items').then((r) => r.json()).then((d) => { ({ season, items } = d); render(); }).catch(() => {});
 refresh();
 // Håll flera föräldrars vyer synkade
-setInterval(() => { if (!editing) refresh(); }, 15000);
+setInterval(() => { if (!editing && !pending) refresh(); }, 15000);
 </script>
 </body>
 </html>
